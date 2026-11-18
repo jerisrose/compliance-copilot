@@ -21,10 +21,9 @@ from pathlib import Path
 
 # rapidfuzz is a third-party library (listed in requirements.txt) for
 # fast fuzzy string matching.
-#   fuzz.WRatio            - a combined scorer that copes with word order,
-#                            partial names and small spelling differences.
-#   utils.default_process  - lowercases and strips punctuation before
-#                            comparing, so "DOE, JON" and "doe jon" look alike.
+#   fuzz.ratio             - how alike two strings are, 0-100.
+#   utils.default_process  - lowercases and strips punctuation, so
+#                            "DOE, JON" and "doe jon" look alike.
 #   process.extract        - scores one query against many names at once.
 from rapidfuzz import fuzz, process, utils
 
@@ -38,6 +37,50 @@ DEFAULT_DATA = Path("data/processed/sdn.jsonl")
 # measure it against labeled test cases.
 DEFAULT_THRESHOLD = 80
 DEFAULT_LIMIT = 10
+
+# Every word in the query must match some word in the listed name at least
+# this well. Without this rule, "David Tom" matched "MICHIELSEN, Tom" just
+# because both contain "Tom".
+MIN_WORD_SCORE = 75
+
+# A short word that is the start of a longer one ("Jon" / "Jonathan",
+# "Co" / "Company") counts as a strong match.
+PREFIX_SCORE = 90
+
+
+def _word_score(a: str, b: str) -> float:
+    """How alike two single words are, 0-100."""
+    if a == b:
+        return 100.0
+    # sorted(..., key=len) puts the shorter word first.
+    short, long_ = sorted((a, b), key=len)
+    if len(short) >= 2 and long_.startswith(short):
+        return max(PREFIX_SCORE, fuzz.ratio(a, b))
+    return fuzz.ratio(a, b)
+
+
+def name_score(query: str, name: str, **kwargs) -> float:
+    """Score how well a listed name matches the query, 0-100.
+
+    For each word in the query, find its best-matching word in the name.
+    If any query word has no good partner, the name is not a match.
+    Otherwise the score is the average of the word scores.
+
+    Word order does not matter, and extra words in the listed name
+    (middle names, "LLC") do not count against it.
+
+    (**kwargs accepts extra named options that rapidfuzz passes in and we
+    don't use, a bit like an unused varargs parameter in Java.)
+    """
+    query_words = utils.default_process(query).split()
+    name_words = utils.default_process(name).split()
+    if not query_words or not name_words:
+        return 0.0
+
+    best = [max(_word_score(q, n) for n in name_words) for q in query_words]
+    if min(best) < MIN_WORD_SCORE:
+        return min(best)
+    return sum(best) / len(best)
 
 
 @dataclass
@@ -76,8 +119,8 @@ def screen(
     results = process.extract(
         query,
         names,
-        scorer=fuzz.WRatio,
-        processor=utils.default_process,
+        scorer=name_score,  # our own scorer, defined above
+        processor=None,     # name_score does its own cleanup
         score_cutoff=threshold,
         limit=limit,
     )
