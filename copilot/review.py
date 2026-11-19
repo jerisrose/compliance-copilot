@@ -108,6 +108,9 @@ def build_prompt(customer: Customer, entry: SdnEntry) -> str:
             "type": entry.sdn_type,
             "programs": entry.programs,
             "remarks": entry.remarks or "none",
+            # Known aliases are strong evidence when the customer's name
+            # matches one of them.
+            "aliases": entry.aliases or "none",
         },
         ensure_ascii=False,
     )
@@ -195,6 +198,8 @@ def main() -> None:
     for r in reviews:
         print(f"{r.match.entry.name}  (name score {r.match.score:.1f})")
         print(f"  Details: {r.match.entry.remarks or 'none'}")
+        if r.match.via_alias:
+            print(f"  Matched alias: {r.match.matched_name}")
         print(f"  Recommendation: {r.decision}  (confidence {r.confidence:.2f})")
         for reason in r.reasons:
             print(f"  - {reason}")

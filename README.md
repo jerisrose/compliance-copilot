@@ -22,8 +22,9 @@ flowchart TD
 ```
 
 - **Ingestion** downloads and cleans public data into consistent records.
-- **Name screening** uses cheap fuzzy matching to find candidates, then an
-  LLM reviews each one and explains its decision.
+- **Name screening** uses cheap fuzzy matching over each entry's name and
+  its known aliases to find candidates, then an LLM reviews each one and
+  explains its decision.
 - **Regulatory Q&A** retrieves relevant passages first, so answers are
   grounded in the documents and cite them.
 - **Triage agent** combines both to draft a recommended disposition for an alert.
@@ -50,7 +51,7 @@ python -m pip install -r requirements.txt
 
 python -m pytest                                              # run the tests
 python -m copilot.ingest --source data/sample/sdn_sample.csv  # sample data
-python -m copilot.ingest                                      # live OFAC list
+python -m copilot.ingest                                      # live OFAC list + aliases
 python -m copilot.screen "Jon Doe"                            # screen a name
 python -m copilot.review "Jon Doe" --dob 1970                 # screen + AI review
 ```
@@ -63,8 +64,10 @@ GEMINI_API_KEY=your-key-here
 GEMINI_MODEL=gemini-3.8-flash      # optional; any model your key can use
 ```
 
-Ingestion writes `data/processed/sdn.jsonl`, one JSON record per line.
-Screening reads that file and lists the closest names with a 0-100 score.
+Ingestion downloads the SDN list and its aliases file (`alt.csv`) and writes
+`data/processed/sdn.jsonl`, one JSON record per line.
+Screening reads that file and scores each entry by its best name, main name
+or alias, on a 0-100 scale. It notes when a match came through an alias.
 Options: `--threshold` (default 80) and `--limit` (default 10).
 
 Review screens the name, then asks the model about the top hits (default 3)

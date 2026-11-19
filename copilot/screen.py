@@ -88,6 +88,18 @@ class Match:
     """One possible match: the listed entry and how similar its name is."""
     entry: SdnEntry
     score: float  # 0-100, higher is closer
+    # Which of the entry's names scored best: its main name or one of its
+    # aliases. Defaults to "" so existing code that builds a Match still works.
+    matched_name: str = ""
+
+    @property
+    def via_alias(self) -> bool:
+        """True if the best-scoring name was an alias, not the main name.
+
+        @property lets you read this like a field (m.via_alias) even though
+        it is calculated, like a Java getter without the brackets.
+        """
+        return bool(self.matched_name) and self.matched_name != self.entry.name
 
 
 def load_entries(path: Path = DEFAULT_DATA) -> list[SdnEntry]:
@@ -112,20 +124,41 @@ def screen(
     if not query.strip():
         return []
 
-    names = [e.name for e in entries]
+    # Build one flat list of every name to check: each entry's main name and
+    # all its aliases. "owners" records which entry each name belongs to, at
+    # the same position, so owners[i] is the entry for names[i].
+    names: list[str] = []
+    owners: list[int] = []
+    for i, entry in enumerate(entries):  # enumerate gives (position, item)
+        for name in [entry.name, *entry.aliases]:  # * unpacks the alias list
+            names.append(name)
+            owners.append(i)
 
-    # extract returns a list of (matched_name, score, position) tuples,
-    # already sorted best first. score_cutoff drops anything below threshold.
+    # extract returns (matched_name, score, position) tuples, best first.
+    # limit=None means "return every name above the threshold": we need them
+    # all, because one entry can appear several times (once per alias).
     results = process.extract(
         query,
         names,
         scorer=name_score,  # our own scorer, defined above
         processor=None,     # name_score does its own cleanup
         score_cutoff=threshold,
-        limit=limit,
+        limit=None,
     )
-    # Unpack each tuple; "_" means "a value we don't need".
-    return [Match(entry=entries[index], score=score) for _, score, index in results]
+
+    # Keep only the best-scoring name for each entry. Results are sorted best
+    # first, so the first time we see an entry is its best name; skip the rest.
+    matches: list[Match] = []
+    seen: set[int] = set()  # a set is like Java's HashSet
+    for matched_name, score, position in results:
+        owner = owners[position]
+        if owner in seen:
+            continue
+        seen.add(owner)
+        matches.append(Match(entries[owner], score, matched_name))
+        if len(matches) == limit:
+            break
+    return matches
 
 
 def main() -> None:
@@ -152,6 +185,8 @@ def main() -> None:
         programs = ", ".join(m.entry.programs) or "none listed"
         # :5.1f formats the score as a number 5 characters wide with 1 decimal.
         print(f"  {m.score:5.1f}  {m.entry.name}  [{m.entry.sdn_type}; {programs}]")
+        if m.via_alias:
+            print(f"         matched alias: {m.matched_name}")
 
 
 if __name__ == "__main__":

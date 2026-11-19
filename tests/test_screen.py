@@ -85,6 +85,27 @@ def test_transliterated_spelling_matches():
     assert realistic_names("Osama Laden") == ["BIN LADIN, Usama bin Muhammad bin Awad"]
 
 
+def test_alias_finds_entry_the_main_name_would_miss():
+    entry = SdnEntry(8, "BIN LADIN, Usama bin Muhammad bin Awad", "individual", [], "",
+                     aliases=["BIN LADEN, Osama"])
+    matches = screen("Osama bin Laden", [entry])
+    assert len(matches) == 1
+    assert matches[0].score == 100
+    assert matches[0].via_alias
+    assert matches[0].matched_name == "BIN LADEN, Osama"
+
+
+def test_entry_matching_several_aliases_appears_once():
+    entry = SdnEntry(9, "EXAMPLE TRADING COMPANY LLC", "entity", [], "",
+                     aliases=["EXAMPLE TRADING CO", "EXAMPLE TRADING COMPANY"])
+    assert len(screen("Example Trading Company", [entry])) == 1
+
+
+def test_main_name_match_is_not_reported_as_alias():
+    matches = screen("Jose David", REALISTIC)
+    assert not matches[0].via_alias
+
+
 def test_reads_back_what_ingest_wrote(tmp_path):
     out = tmp_path / "sdn.jsonl"
     write_jsonl(sample_entries(), out)
