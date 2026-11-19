@@ -15,18 +15,27 @@ from __future__ import annotations
 import json
 import os
 import time
+from pathlib import Path
 from typing import Callable, Protocol
 
 # python-dotenv reads the .env file and puts its lines into the environment,
 # so os.environ["GEMINI_API_KEY"] works without the key ever being in code.
 from dotenv import load_dotenv
 
-load_dotenv()
+# Find .env by its exact location instead of letting the library search for
+# it. The search depends on how Python was started, and with "python -c"
+# it could miss the file.
+#   __file__          the full path of this file (.../copilot/llm.py)
+#   .resolve()        turns it into a complete, absolute path
+#   .parent.parent    goes up two levels: copilot/ -> the project folder
+#   / ".env"          Path objects join with "/", on Windows too
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env")
 
 # The model can be changed in .env with a line like  GEMINI_MODEL=gemini-3.5-flash
 # Google renames models often; the list available to your key is shown in
 # Google AI Studio.
-DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
 # Some failures are temporary and worth retrying:
 #   429 = too many requests (free-tier rate limit)

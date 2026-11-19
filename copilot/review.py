@@ -194,6 +194,7 @@ def main() -> None:
     print("(Recommendations only. A human analyst makes the final decision.)\n")
     for r in reviews:
         print(f"{r.match.entry.name}  (name score {r.match.score:.1f})")
+        print(f"  Details: {r.match.entry.remarks or 'none'}")
         print(f"  Recommendation: {r.decision}  (confidence {r.confidence:.2f})")
         for reason in r.reasons:
             print(f"  - {reason}")
