@@ -95,6 +95,49 @@ def test_prompt_contains_customer_and_entry_details():
     assert "DOB 15 Apr 1963" in prompt
 
 
+# --- Type rule -----------------------------------------------------------------
+# Recreates a real case: a person named "Osama bin Laden" matched the
+# organisation AL QA'IDA through its alias "USAMA BIN LADEN NETWORK", and the
+# AI wrongly called it a likely match.
+
+PERSON = SdnEntry(10, "BIN LADIN, Usama bin Muhammad bin Awad", "individual", ["SDGT"],
+                  "DOB 30 Jul 1957; POB Jeddah, Saudi Arabia", aliases=["BIN LADEN, Osama"])
+ORGANISATION = SdnEntry(11, "AL QA'IDA", "entity", ["SDGT"], "",
+                        aliases=["USAMA BIN LADEN NETWORK"])
+
+
+def test_person_is_never_matched_to_an_organisation():
+    client = FakeClient({"decision": LIKELY_MATCH, "confidence": 0.95})
+    reviews = review_customer(client, Customer("Osama bin Laden", "1957", "Saudi Arabia"),
+                              [PERSON, ORGANISATION])
+    by_name = {r.match.entry.name: r for r in reviews}
+    assert by_name["AL QA'IDA"].decision == UNLIKELY_MATCH
+    assert "Type mismatch" in by_name["AL QA'IDA"].reasons[0]
+    # The AI was still asked about the person, and only about the person.
+    assert by_name["BIN LADIN, Usama bin Muhammad bin Awad"].decision == LIKELY_MATCH
+    assert len(client.prompts) == 1
+
+
+def test_organisation_customer_is_matched_to_organisations():
+    client = FakeClient({"decision": NEEDS_REVIEW, "confidence": 0.5})
+    reviews = review_customer(client, Customer("Usama bin Laden Network", type="entity"),
+                              [PERSON, ORGANISATION])
+    names = [r.match.entry.name for r in reviews if r.decision == NEEDS_REVIEW]
+    assert names == ["AL QA'IDA"]
+
+
+def test_type_mismatches_do_not_use_up_ai_review_slots():
+    ships = [SdnEntry(100 + i, f"JOSE DAVID {i}", "vessel", [], "") for i in range(5)]
+    client = FakeClient({"decision": NEEDS_REVIEW, "confidence": 0.5})
+    reviews = review_customer(client, Customer("Jose David"), ships + ENTRIES, max_reviews=1)
+    assert len(client.prompts) == 1  # the one individual still got an AI review
+    assert any(r.match.entry.name == "CABELLO RONDON, Jose David" for r in reviews)
+
+
+def test_prompt_includes_customer_type():
+    assert '"type": "entity"' in build_prompt(Customer("X Ltd", type="entity"), ENTRIES[0])
+
+
 def test_prompt_includes_aliases():
     entry = SdnEntry(3, "BIN LADIN, Usama", "individual", [], "", aliases=["BIN LADEN, Osama"])
     assert "BIN LADEN, Osama" in build_prompt(Customer("Osama bin Laden"), entry)

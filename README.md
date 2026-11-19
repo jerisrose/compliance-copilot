@@ -72,12 +72,17 @@ Options: `--threshold` (default 80) and `--limit` (default 10).
 
 Review screens the name, then asks the model about the top hits (default 3)
 and prints a recommendation with reasons. Options: `--dob`, `--country`,
+`--type` (individual, entity, vessel or aircraft; default individual),
 `--max-reviews`.
 
 ## Design decisions
 
 - **Two stages.** Cheap fuzzy matching narrows ~19,500 names to a few; the
   model only sees those few, which keeps cost and latency low.
+- **Hard rules in code, judgment in the model.** A person can never match an
+  organisation, ship or aircraft. In testing the model broke this rule (and
+  cited outside knowledge as evidence), so it is now enforced in code before
+  the model is asked. The model handles judgments that need reasoning.
 - **The model recommends; a human decides.** Output is one of
   `likely_match`, `needs_review`, `unlikely_match`, with reasons.
 - **Retries.** Temporary failures (busy model, rate limit) are retried with
